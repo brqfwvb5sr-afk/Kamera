@@ -15,11 +15,9 @@
       --good: #22c55e;
       --warn: #f59e0b;
       --danger: #ef4444;
-      --accent: #38bdf8;
     }
 
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
       min-height: 100vh;
@@ -33,7 +31,7 @@
 
     .app {
       width: 100%;
-      max-width: 760px;
+      max-width: 820px;
       display: grid;
       gap: 14px;
     }
@@ -50,20 +48,11 @@
       backdrop-filter: blur(12px);
     }
 
-    .status-wrap {
-      display: grid;
-      gap: 2px;
-    }
+    .status-wrap { display: grid; gap: 2px; }
+    .status-label { font-size: 13px; color: var(--muted); }
+    .status-name { font-size: 28px; font-weight: 700; }
 
-    .status-label {
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .status-name {
-      font-size: 28px;
-      font-weight: 700;
-    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
     .video-wrap {
       position: relative;
@@ -82,8 +71,9 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1);
     }
+
+    .mirrored { transform: scaleX(-1); }
 
     .floating-info {
       position: absolute;
@@ -107,10 +97,12 @@
       font-size: 14px;
     }
 
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+    .message {
+      padding: 12px 14px;
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      color: var(--muted);
     }
 
     button, input {
@@ -127,18 +119,17 @@
       background: var(--panel-2);
     }
 
+    input {
+      width: 100%;
+      background: #1f2937;
+      color: var(--text);
+      outline: 1px solid rgba(255,255,255,0.08);
+    }
+
     .primary { background: linear-gradient(135deg, #0ea5e9, #2563eb); }
     .good { background: linear-gradient(135deg, #16a34a, #22c55e); }
     .danger { background: linear-gradient(135deg, #dc2626, #f97316); }
     .ghost { background: rgba(30, 41, 59, 0.88); }
-
-    .message {
-      padding: 12px 14px;
-      background: var(--panel);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px;
-      color: var(--muted);
-    }
 
     dialog {
       width: min(92vw, 440px);
@@ -155,41 +146,11 @@
       backdrop-filter: blur(4px);
     }
 
-    .modal {
-      padding: 18px;
-      display: grid;
-      gap: 14px;
-    }
-
-    .modal h2 {
-      margin: 0;
-      font-size: 24px;
-    }
-
-    .modal p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.4;
-    }
-
-    input {
-      width: 100%;
-      background: #1f2937;
-      color: var(--text);
-      outline: 1px solid rgba(255,255,255,0.08);
-    }
-
-    .modal-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .people-list {
-      display: grid;
-      gap: 8px;
-    }
-
+    .modal { padding: 18px; display: grid; gap: 14px; }
+    .modal h2 { margin: 0; font-size: 24px; }
+    .modal p { margin: 0; color: var(--muted); line-height: 1.4; }
+    .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .people-list { display: grid; gap: 8px; }
     .person-row {
       display: flex;
       align-items: center;
@@ -199,11 +160,7 @@
       background: #1f2937;
       border-radius: 14px;
     }
-
-    .small {
-      color: var(--muted);
-      font-size: 13px;
-    }
+    .small { color: var(--muted); font-size: 13px; }
   </style>
 </head>
 <body>
@@ -215,6 +172,7 @@
       </div>
       <div class="actions">
         <button id="startBtn" class="primary">Kamera starten</button>
+        <button id="switchBtn" class="ghost" disabled>Kamera wechseln</button>
         <button id="newUserBtn" class="good" disabled>Neuer Nutzer</button>
       </div>
     </div>
@@ -234,7 +192,7 @@
   <dialog id="newUserDialog">
     <div class="modal">
       <h2>Neuer Nutzer</h2>
-      <p>Gib einen Namen ein und scanne die Person. Die Daten bleiben nur lokal im Browser gespeichert.</p>
+      <p>Gib einen Namen ein und scanne die Person. Beim Scannen sollte nur ein Gesicht sichtbar sein.</p>
       <input id="nameInput" type="text" maxlength="24" placeholder="Name eingeben, z. B. Alexandre" />
       <div class="modal-actions">
         <button id="scanBtn" class="good">Scannen</button>
@@ -255,6 +213,7 @@
     const ctx = overlay.getContext('2d');
 
     const startBtn = document.getElementById('startBtn');
+    const switchBtn = document.getElementById('switchBtn');
     const newUserBtn = document.getElementById('newUserBtn');
     const newUserDialog = document.getElementById('newUserDialog');
     const closeDialogBtn = document.getElementById('closeDialogBtn');
@@ -277,9 +236,12 @@
     let profiles = loadProfiles();
     let lastSpokenName = '';
     let lastSpeakTime = 0;
+    let currentFacingMode = 'user';
+    let currentStream = null;
 
     updatePeopleList();
     updateSavedCount();
+    applyMirror();
 
     function setMessage(text) {
       messageEl.textContent = text;
@@ -338,6 +300,19 @@
         .replaceAll("'", '&#039;');
     }
 
+    function stopCurrentStream() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
+    }
+
+    function applyMirror() {
+      const shouldMirror = currentFacingMode === 'user';
+      video.classList.toggle('mirrored', shouldMirror);
+      overlay.classList.toggle('mirrored', shouldMirror);
+    }
+
     async function loadModels() {
       setMessage('Modelle werden geladen...');
       await Promise.all([
@@ -351,20 +326,36 @@
 
     async function startCamera() {
       if (!modelsReady) await loadModels();
+      stopCurrentStream();
+      applyMirror();
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          facingMode: { ideal: currentFacingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false
       });
 
+      currentStream = stream;
       video.srcObject = stream;
       await video.play();
       overlay.width = video.videoWidth;
       overlay.height = video.videoHeight;
       running = true;
+      switchBtn.disabled = false;
       newUserBtn.disabled = false;
-      setMessage('Kamera läuft.');
+      applyMirror();
+      setMessage('Kamera läuft: ' + (currentFacingMode === 'user' ? 'Frontkamera' : 'Rückkamera'));
       requestAnimationFrame(recognitionLoop);
+    }
+
+    async function switchCamera() {
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      running = false;
+      await new Promise(resolve => setTimeout(resolve, 60));
+      await startCamera();
     }
 
     function averageDescriptors(descriptors) {
@@ -409,11 +400,11 @@
       speechSynthesis.speak(utterance);
     }
 
-    async function detectSingleFace() {
+    async function detectAllFaces() {
       return await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
         .withFaceLandmarks()
-        .withFaceDescriptor();
+        .withFaceDescriptors();
     }
 
     async function scanPerson() {
@@ -424,18 +415,18 @@
       }
 
       scanBtn.disabled = true;
-      setMessage('Scan läuft. Bitte ruhig in die Kamera schauen und den Kopf leicht bewegen.');
+      setMessage('Scan läuft. Nur ein Gesicht sollte sichtbar sein.');
 
       const descriptors = [];
       for (let i = 0; i < SCAN_SAMPLES; i++) {
         await new Promise(resolve => setTimeout(resolve, 450));
-        const detection = await detectSingleFace();
-        if (!detection) {
-          setMessage('Gesicht nicht gefunden. Bitte heller oder näher zur Kamera.');
+        const detections = await detectAllFaces();
+        if (detections.length !== 1) {
+          setMessage('Beim Scannen muss genau ein Gesicht sichtbar sein.');
           scanBtn.disabled = false;
           return;
         }
-        descriptors.push(detection.descriptor);
+        descriptors.push(detections[0].descriptor);
         setMessage(`Scan ${i + 1} von ${SCAN_SAMPLES} aufgenommen...`);
       }
 
@@ -457,37 +448,65 @@
       newUserDialog.close();
     }
 
+    function drawLabel(text, x, y, color) {
+      ctx.font = '20px Arial';
+      const paddingX = 10;
+      const paddingY = 8;
+      const textWidth = ctx.measureText(text).width;
+      const boxWidth = textWidth + paddingX * 2;
+      const boxHeight = 32;
+      const drawY = Math.max(0, y - boxHeight - 8);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, drawY, boxWidth, boxHeight);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, x + paddingX, drawY + 22);
+    }
+
     async function recognitionLoop() {
       if (!running) return;
       ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-      const detection = await detectSingleFace();
-      if (detection) {
+      const detections = await detectAllFaces();
+
+      if (detections.length === 0) {
+        recognizedNameEl.textContent = 'Niemand';
+        confidenceBadge.textContent = 'Treffer: 0%';
+        requestAnimationFrame(recognitionLoop);
+        return;
+      }
+
+      let topName = 'Unbekannt';
+      let topConfidence = 0;
+      const spokenNames = [];
+
+      for (const detection of detections) {
         const { x, y, width, height } = detection.detection.box;
         const match = findBestMatch(Array.from(detection.descriptor));
-
         let label = 'Unbekannt';
         let color = '#f59e0b';
 
         if (match) {
           label = match.name;
           color = '#22c55e';
-          recognizedNameEl.textContent = match.name;
-          confidenceBadge.textContent = 'Treffer: ' + match.confidence + '%';
-          speakName(match.name);
-        } else {
-          recognizedNameEl.textContent = 'Unbekannt';
-          confidenceBadge.textContent = 'Treffer: 0%';
+          spokenNames.push(match.name);
+          if (match.confidence > topConfidence) {
+            topConfidence = match.confidence;
+            topName = match.name;
+          }
         }
 
         ctx.strokeStyle = color;
         ctx.lineWidth = 4;
         ctx.strokeRect(x, y, width, height);
-        ctx.fillStyle = color;
-        ctx.font = '20px Arial';
-        ctx.fillText(label, x, Math.max(24, y - 10));
+        drawLabel(label, x, y, color);
+      }
+
+      if (spokenNames.length > 0) {
+        recognizedNameEl.textContent = topName;
+        confidenceBadge.textContent = 'Treffer: ' + topConfidence + '%';
+        speakName(topName);
       } else {
-        recognizedNameEl.textContent = 'Niemand';
+        recognizedNameEl.textContent = detections.length > 1 ? 'Mehrere Unbekannt' : 'Unbekannt';
         confidenceBadge.textContent = 'Treffer: 0%';
       }
 
@@ -502,6 +521,18 @@
         console.error(error);
         setMessage('Kamera oder Modelle konnten nicht gestartet werden.');
         startBtn.disabled = false;
+      }
+    });
+
+    switchBtn.addEventListener('click', async () => {
+      try {
+        switchBtn.disabled = true;
+        await switchCamera();
+      } catch (error) {
+        console.error(error);
+        setMessage('Kamerawechsel fehlgeschlagen.');
+      } finally {
+        switchBtn.disabled = false;
       }
     });
 
