@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kamera 2 – Personen erkennen</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #1e2430;
+      --text: #f3f5f7;
+      --muted: #aab3c2;
+      --accent: #67e8f9;
+      --good: #4ade80;
+      --warn: #f59e0b;
+      --bad: #f87171;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: radial-gradient(circle at top, #1a2030 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .app {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: rgba(23, 26, 33, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
+
+    p {
+      margin: 6px 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button, input {
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      padding: 12px 14px;
+    }
+
+    input {
+      background: var(--panel-2);
+      color: var(--text);
+      min-width: 220px;
+      outline: 1px solid rgba(255,255,255,0.08);
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--panel-2);
+      color: var(--text);
+      font-weight: 700;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .primary { background: linear-gradient(135deg, #06b6d4, #2563eb); }
+    .good { background: linear-gradient(135deg, #16a34a, #22c55e); }
+    .danger { background: linear-gradient(135deg, #dc2626, #f97316); }
+
+    .video-wrap {
+      position: relative;
+      width: min(100%, 720px);
+      margin: 0 auto;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      border-radius: 18px;
+      background: #000;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    video, canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+    }
+
+    .status {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .pill {
+      background: var(--panel-2);
+      border-radius: 14px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .value {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    #peopleList {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .person-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--panel-2);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .hint {
+      margin-top: 10px;
+      padding: 12px;
+      background: rgba(103, 232, 249, 0.08);
+      border: 1px solid rgba(103, 232, 249, 0.18);
+      border-radius: 12px;
+    }
+
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+      .status { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1>Kamera 2 – Personen erkennen</h1>
+          <p>Lokale Gesichtserkennung im Browser. Personen per Scan hinzufügen und live wiedererkennen.</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="startBtn" class="primary">Kamera starten</button>
+        <input id="nameInput" type="text" maxlength="24" placeholder="Name eingeben, z. B. Hans" />
+        <button id="scanBtn" class="good" disabled>Person scannen</button>
+        <button id="clearBtn" class="danger">Alle Personen löschen</button>
+      </div>
+
+      <div class="hint">
+        Idee: Beim Scannen werden 7 Gesichts-Messungen aufgenommen. Daraus bildet die App einen Durchschnitt. So erkennt sie dieselbe Person später stabiler.
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="video-wrap">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="overlay"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="status">
+          <div class="pill">
+            <div class="label">Erkannt</div>
+            <div class="value" id="recognizedName">Niemand</div>
+          </div>
+          <div class="pill">
+            <div class="label">Treffer</div>
+            <div class="value" id="confidence">0%</div>
+          </div>
+          <div class="pill">
+            <div class="label">Gespeichert</div>
+            <div class="value" id="savedCount">0</div>
+          </div>
+        </div>
+
+        <p id="message">Noch nicht gestartet.</p>
+
+        <div>
+          <h3>Gespeicherte Personen</h3>
+          <div id="peopleList"></div>
+          <p class="small">Alles wird nur im Browser gespeichert. Nach einem anderen Gerät oder Browser ist die Liste leer.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const ctx = overlay.getContext('2d');
+
+    const startBtn = document.getElementById('startBtn');
+    const scanBtn = document.getElementById('scanBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const nameInput = document.getElementById('nameInput');
+
+    const recognizedNameEl = document.getElementById('recognizedName');
+    const confidenceEl = document.getElementById('confidence');
+    const savedCountEl = document.getElementById('savedCount');
+    const peopleListEl = document.getElementById('peopleList');
+    const messageEl = document.getElementById('message');
+
+    const STORAGE_KEY = 'kamera2-face-profiles-v1';
+    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+    const MATCH_THRESHOLD = 0.47;
+    const SCAN_SAMPLES = 7;
+
+    let modelsReady = false;
+    let running = false;
+    let profiles = loadProfiles();
+    let lastSpokenName = '';
+    let lastSpeakTime = 0;
+
+    updatePeopleList();
+    updateSavedCount();
+
+    function setMessage(text) {
+      messageEl.textContent = text;
+    }
+
+    function loadProfiles() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      } catch {
+        return [];
+      }
+    }
+
+    function saveProfiles() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+      updatePeopleList();
+      updateSavedCount();
+    }
+
+    function updateSavedCount() {
+      savedCountEl.textContent = String(profiles.length);
+    }
+
+    function updatePeopleList() {
+      peopleListEl.innerHTML = '';
+      if (!profiles.length) {
+        peopleListEl.innerHTML = '<div class="small">Noch keine Personen gespeichert.</div>';
+        return;
+      }
+
+      profiles.forEach((profile, index) => {
+        const row = document.createElement('div');
+        row.className = 'person-row';
+        row.innerHTML = `
+          <div>
+            <div><strong>${escapeHtml(profile.name)}</strong></div>
+            <div class="small">${profile.samples} Scanbilder</div>
+          </div>
+          <button data-index="${index}">Löschen</button>
+        `;
+        row.querySelector('button').addEventListener('click', () => {
+          profiles.splice(index, 1);
+          saveProfiles();
+          setMessage(profile.name + ' wurde gelöscht.');
+        });
+        peopleListEl.appendChild(row);
+      });
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function loadModels() {
+      setMessage('Modelle werden geladen...');
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      ]);
+      modelsReady = true;
+      setMessage('Modelle geladen. Du kannst die Kamera starten.');
+    }
+
+    async function startCamera() {
+      if (!modelsReady) await loadModels();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+      running = true;
+      scanBtn.disabled = false;
+      setMessage('Kamera läuft. Schau gerade in die Kamera.');
+      requestAnimationFrame(recognitionLoop);
+    }
+
+    function averageDescriptors(descriptors) {
+      const length = descriptors[0].length;
+      const avg = new Float32Array(length);
+      for (const desc of descriptors) {
+        for (let i = 0; i < length; i++) avg[i] += desc[i];
+      }
+      for (let i = 0; i < length; i++) avg[i] /= descriptors.length;
+      return Array.from(avg);
+    }
+
+    function distance(a, b) {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        const d = a[i] - b[i];
+        sum += d * d;
+      }
+      return Math.sqrt(sum);
+    }
+
+    function findBestMatch(descriptor) {
+      if (!profiles.length) return null;
+      let best = null;
+      for (const profile of profiles) {
+        const dist = distance(descriptor, profile.descriptor);
+        if (!best || dist < best.dist) {
+          best = { name: profile.name, dist };
+        }
+      }
+      if (!best || best.dist > MATCH_THRESHOLD) return null;
+      const confidence = Math.max(0, Math.min(100, Math.round((1 - best.dist / MATCH_THRESHOLD) * 100)));
+      return { ...best, confidence };
+    }
+
+    function speakName(name) {
+      const now = Date.now();
+      if (lastSpokenName === name && now - lastSpeakTime < 5000) return;
+      lastSpokenName = name;
+      lastSpeakTime = now;
+
+      const utterance = new SpeechSynthesisUtterance('Das ist ' + name);
+      utterance.lang = 'de-DE';
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+    }
+
+    async function detectSingleFace() {
+      return await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+    }
+
+    async function scanPerson() {
+      const name = nameInput.value.trim();
+      if (!name) {
+        setMessage('Bitte zuerst einen Namen eingeben.');
+        return;
+      }
+
+      scanBtn.disabled = true;
+      setMessage('Scan läuft. Bitte Kopf leicht bewegen und in die Kamera schauen.');
+
+      const descriptors = [];
+
+      for (let i = 0; i < SCAN_SAMPLES; i++) {
+        await new Promise(resolve => setTimeout(resolve, 450));
+        const detection = await detectSingleFace();
+        if (!detection) {
+          setMessage('Gesicht nicht gefunden. Versuch es heller oder näher zur Kamera.');
+          scanBtn.disabled = false;
+          return;
+        }
+        descriptors.push(detection.descriptor);
+        setMessage(`Scanbild ${i + 1} von ${SCAN_SAMPLES} aufgenommen...`);
+      }
+
+      const averaged = averageDescriptors(descriptors);
+      const existingIndex = profiles.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+      const profile = { name, descriptor: averaged, samples: SCAN_SAMPLES };
+
+      if (existingIndex >= 0) {
+        profiles[existingIndex] = profile;
+        setMessage(name + ' wurde neu eingescannt und aktualisiert.');
+      } else {
+        profiles.push(profile);
+        setMessage(name + ' wurde gespeichert.');
+      }
+
+      saveProfiles();
+      scanBtn.disabled = false;
+      nameInput.value = '';
+    }
+
+    async function recognitionLoop() {
+      if (!running) return;
+
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      const detection = await detectSingleFace();
+      if (detection) {
+        const { x, y, width, height } = detection.detection.box;
+        const match = findBestMatch(Array.from(detection.descriptor));
+
+        let label = 'Unbekannt';
+        let color = '#f59e0b';
+
+        if (match) {
+          label = `${match.name} (${match.confidence}%)`;
+          color = '#4ade80';
+          recognizedNameEl.textContent = match.name;
+          confidenceEl.textContent = match.confidence + '%';
+          speakName(match.name);
+        } else {
+          recognizedNameEl.textContent = 'Unbekannt';
+          confidenceEl.textContent = '0%';
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x, y, width, height);
+        ctx.fillStyle = color;
+        ctx.font = '20px Arial';
+        ctx.fillText(label, x, Math.max(24, y - 10));
+      } else {
+        recognizedNameEl.textContent = 'Niemand';
+        confidenceEl.textContent = '0%';
+      }
+
+      requestAnimationFrame(recognitionLoop);
+    }
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        startBtn.disabled = true;
+        await startCamera();
+      } catch (error) {
+        console.error(error);
+        setMessage('Kamera oder Modelle konnten nicht gestartet werden.');
+        startBtn.disabled = false;
+      }
+    });
+
+    scanBtn.addEventListener('click', async () => {
+      try {
+        await scanPerson();
+      } catch (error) {
+        console.error(error);
+        setMessage('Scannen fehlgeschlagen.');
+        scanBtn.disabled = false;
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      profiles = [];
+      saveProfiles();
+      recognizedNameEl.textContent = 'Niemand';
+      confidenceEl.textContent = '0%';
+      setMessage('Alle Personen wurden gelöscht.');
+    });
+  </script>
+</body>
+</html>
